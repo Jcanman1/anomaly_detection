@@ -5,10 +5,10 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+  <StartupObject>AnomalyDetector.ProgramWinForms</StartupObject>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.2" />
-    <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="1.0.0" />
-    <PackageReference Include="SixLabors.ImageSharp.Formats.Tiff" Version="2.0.0" />
+  <PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
+  <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="1.0.0" />
   </ItemGroup>
 </Project>

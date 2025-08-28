@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "dgSpecHash": "U0+DDTPjxsI=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\jcantu\\anomaly_detection\\csharp_anomaly_detector\\AnomalyDetector.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\jcantu\\.nuget\\packages\\sixlabors.fonts\\1.0.0\\sixlabors.fonts.1.0.0.nupkg.sha512",
+    "C:\\Users\\jcantu\\.nuget\\packages\\sixlabors.imagesharp\\3.1.11\\sixlabors.imagesharp.3.1.11.nupkg.sha512",
+    "C:\\Users\\jcantu\\.nuget\\packages\\sixlabors.imagesharp.drawing\\1.0.0\\sixlabors.imagesharp.drawing.1.0.0.nupkg.sha512",
+    "C:\\Users\\jcantu\\.nuget\\packages\\microsoft.netcore.app.ref\\7.0.20\\microsoft.netcore.app.ref.7.0.20.nupkg.sha512",
+    "C:\\Users\\jcantu\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\7.0.20\\microsoft.windowsdesktop.app.ref.7.0.20.nupkg.sha512",
+    "C:\\Users\\jcantu\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\7.0.20\\microsoft.aspnetcore.app.ref.7.0.20.nupkg.sha512",
+    "C:\\Users\\jcantu\\.nuget\\packages\\microsoft.netcore.app.host.win-x64\\7.0.20\\microsoft.netcore.app.host.win-x64.7.0.20.nupkg.sha512"
+  ],
+  "logs": []
+}
