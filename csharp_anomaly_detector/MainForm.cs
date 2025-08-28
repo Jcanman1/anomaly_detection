@@ -31,24 +31,27 @@ namespace AnomalyDetector
         private FlowLayoutPanel inputThumbPanel;
 
         public MainForm()
+            // Attach event handlers for live update
         {
             this.Text = "Anomaly Detector - WinForms GUI";
-            this.Width = 1800;
+            this.Width = 2000;
             this.Height = 1200;
             this.AutoScaleMode = AutoScaleMode.Font;
 
             var mainLayout = new TableLayoutPanel {
                 Dock = DockStyle.Fill,
-                ColumnCount = 4,
+                ColumnCount = 6,
                 RowCount = 4,
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 Padding = new Padding(10)
             };
-            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200));
-            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200));
-            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 1600));
-            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200)); // 0
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200)); // 1
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200)); // 2
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200)); // 3
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200)); // 4
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); // 5
             mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 250));
             mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 250));
             mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
@@ -78,6 +81,11 @@ namespace AnomalyDetector
             numBorder = new NumericUpDown() { Minimum = 0, Maximum = 10, Value = 1, AutoSize = true };
             mainLayout.Controls.Add(numBorder, 3, 2);
 
+            var lblTextureWeight = new Label() { Text = "Texture Weight:", AutoSize = true, TextAlign = System.Drawing.ContentAlignment.MiddleLeft };
+            mainLayout.Controls.Add(lblTextureWeight, 4, 2);
+            numTextureWeight = new NumericUpDown() { DecimalPlaces = 2, Increment = 0.1M, Minimum = 0M, Maximum = 1M, Value = 0.3M, AutoSize = true };
+            mainLayout.Controls.Add(numTextureWeight, 5, 2);
+
             // Add enhanced detection options
             chkRobustStats = new CheckBox() { Text = "Use Robust Statistics (MAD)", Checked = true, AutoSize = true };
             mainLayout.Controls.Add(chkRobustStats, 0, 3);
@@ -85,25 +93,143 @@ namespace AnomalyDetector
             chkTextureFeatures = new CheckBox() { Text = "Use Texture Features", Checked = false, AutoSize = true };
             mainLayout.Controls.Add(chkTextureFeatures, 1, 3);
 
-            var lblTextureWeight = new Label() { Text = "Texture Weight:", AutoSize = true, TextAlign = System.Drawing.ContentAlignment.MiddleLeft };
-            mainLayout.Controls.Add(lblTextureWeight, 2, 3);
-            numTextureWeight = new NumericUpDown() { DecimalPlaces = 2, Increment = 0.1M, Minimum = 0M, Maximum = 1M, Value = 0.3M, AutoSize = true };
-            mainLayout.Controls.Add(numTextureWeight, 3, 3);
 
             btnAnalyze = new Button() { Text = "Analyze", AutoSize = true, Height = 30 };
             btnAnalyze.Click += BtnAnalyze_Click;
             mainLayout.Controls.Add(btnAnalyze, 0, 4);
 
             flowResults = new FlowLayoutPanel() { Dock = DockStyle.Fill, AutoScroll = true };
-            mainLayout.SetColumnSpan(flowResults, 4);
+            mainLayout.SetColumnSpan(flowResults, 6);
             mainLayout.Controls.Add(flowResults, 0, 4);
 
-            refThumbPanel = new FlowLayoutPanel() { AutoSize = false, Height = 500, Width = 1600, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, AutoScroll = true };
-            inputThumbPanel = new FlowLayoutPanel() { AutoSize = false, Height = 500, Width = 1600, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, AutoScroll = true };
+            refThumbPanel = new FlowLayoutPanel() { AutoSize = false, Height = 500, Width = 2000, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, AutoScroll = true };
+            inputThumbPanel = new FlowLayoutPanel() { AutoSize = false, Height = 500, Width = 2000, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, AutoScroll = true };
             mainLayout.Controls.Add(refThumbPanel, 2, 0);
+            mainLayout.SetColumnSpan(refThumbPanel, 4);
             mainLayout.Controls.Add(inputThumbPanel, 2, 1);
+            mainLayout.SetColumnSpan(inputThumbPanel, 4);
 
             this.Controls.Add(mainLayout);
+            // Attach event handlers for live update (after controls are initialized)
+            numSensitivity.ValueChanged += (s, e) => UpdateAnalysisOverlays();
+            numBorder.ValueChanged += (s, e) => UpdateAnalysisOverlays();
+            numTextureWeight.ValueChanged += (s, e) => UpdateAnalysisOverlays();
+            chkRobustStats.CheckedChanged += (s, e) => UpdateAnalysisOverlays();
+            chkTextureFeatures.CheckedChanged += (s, e) => UpdateAnalysisOverlays();
+        }
+
+        private void UpdateAnalysisOverlays()
+        {
+            if (refFiles.Count == 0 || inputFiles.Count == 0)
+                return;
+
+            flowResults.Controls.Clear();
+
+            var model = Analyzer.ComputeReferenceModel(refFiles.ToArray(), (int)numBorder.Value);
+            if (model == null)
+                return;
+
+            int maxThumbWidth = Math.Max(refThumbPanel.Width, inputThumbPanel.Width);
+            var mainResultsPanel = new FlowLayoutPanel() {
+                Width = maxThumbWidth,
+                AutoSize = true,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false
+            };
+
+            var refPanel = new Panel() { Width = maxThumbWidth, Height = 280, BorderStyle = BorderStyle.FixedSingle };
+            var refLabel = new Label() { Text = "Reference Images", Dock = DockStyle.Top, Height = 30, TextAlign = System.Drawing.ContentAlignment.MiddleCenter };
+            refPanel.Controls.Add(refLabel);
+            var refFlow = new FlowLayoutPanel() { Dock = DockStyle.Fill, AutoScroll = true };
+            refPanel.Controls.Add(refFlow);
+            refFlow.Dock = DockStyle.Fill;
+            foreach (var refPath in refFiles)
+            {
+                var loaded = Analyzer.LoadRgbImage(refPath);
+                if (loaded == null) continue;
+
+                bool[,] mask;
+                if (chkTextureFeatures.Checked && chkRobustStats.Checked)
+                {
+                    mask = Analyzer.DetectAnomaliesEnhanced(
+                        model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value,
+                        true, (double)numTextureWeight.Value);
+                }
+                else if (chkRobustStats.Checked)
+                {
+                    mask = Analyzer.DetectAnomaliesRobust(
+                        model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value, true);
+                }
+                else
+                {
+                    mask = Analyzer.DetectAnomalies(model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value);
+                }
+
+                var highlighted = Analyzer.CreateHighlightedImage(loaded.Value, mask);
+                using var ms = new MemoryStream();
+                highlighted.Save(ms, new PngEncoder());
+                ms.Seek(0, SeekOrigin.Begin);
+                var bmp = new System.Drawing.Bitmap(ms);
+                var pic = new PictureBox();
+                pic.Width = 220; pic.Height = 220; pic.SizeMode = PictureBoxSizeMode.Zoom;
+                pic.Image = new System.Drawing.Bitmap(bmp);
+                var lbl = new Label() { Text = Path.GetFileName(refPath), Dock = DockStyle.Bottom, Height = 40, TextAlign = System.Drawing.ContentAlignment.MiddleCenter };
+                var imgPanel = new Panel() { Width = 240, Height = 260 };
+                imgPanel.Controls.Add(pic);
+                pic.Dock = DockStyle.Top;
+                imgPanel.Controls.Add(lbl);
+                refFlow.Controls.Add(imgPanel);
+                bmp.Dispose();
+            }
+            mainResultsPanel.Controls.Add(refPanel);
+
+            var inputPanel = new Panel() { Width = maxThumbWidth, Height = 280, BorderStyle = BorderStyle.FixedSingle };
+            var inputLabel = new Label() { Text = "Input Images", Dock = DockStyle.Top, Height = 30, TextAlign = System.Drawing.ContentAlignment.MiddleCenter };
+            inputPanel.Controls.Add(inputLabel);
+            var inputFlow = new FlowLayoutPanel() { Dock = DockStyle.Fill, AutoScroll = true };
+            inputPanel.Controls.Add(inputFlow);
+            inputFlow.Dock = DockStyle.Fill;
+            foreach (var input in inputFiles)
+            {
+                var loaded = Analyzer.LoadRgbImage(input);
+                if (loaded == null) continue;
+
+                bool[,] mask;
+                if (chkTextureFeatures.Checked && chkRobustStats.Checked)
+                {
+                    mask = Analyzer.DetectAnomaliesEnhanced(
+                        model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value,
+                        true, (double)numTextureWeight.Value);
+                }
+                else if (chkRobustStats.Checked)
+                {
+                    mask = Analyzer.DetectAnomaliesRobust(
+                        model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value, true);
+                }
+                else
+                {
+                    mask = Analyzer.DetectAnomalies(model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value);
+                }
+
+                var highlighted = Analyzer.CreateHighlightedImage(loaded.Value, mask);
+                using var ms = new MemoryStream();
+                highlighted.Save(ms, new PngEncoder());
+                ms.Seek(0, SeekOrigin.Begin);
+                var bmp = new System.Drawing.Bitmap(ms);
+                var pic = new PictureBox();
+                pic.Width = 220; pic.Height = 220; pic.SizeMode = PictureBoxSizeMode.Zoom;
+                pic.Image = new System.Drawing.Bitmap(bmp);
+                var lbl = new Label() { Text = Path.GetFileName(input), Dock = DockStyle.Bottom, Height = 40, TextAlign = System.Drawing.ContentAlignment.MiddleCenter };
+                var imgPanel = new Panel() { Width = 240, Height = 260 };
+                imgPanel.Controls.Add(pic);
+                pic.Dock = DockStyle.Top;
+                imgPanel.Controls.Add(lbl);
+                inputFlow.Controls.Add(imgPanel);
+                bmp.Dispose();
+            }
+            mainResultsPanel.Controls.Add(inputPanel);
+
+            flowResults.Controls.Add(mainResultsPanel);
         }
 
         private void BtnLoadRef_Click(object? sender, EventArgs e)
