@@ -13,7 +13,9 @@ namespace AnomalyDetector
     public class MainForm : Form
     {
         private Button btnLoadRef;
+        private Button btnClearRef;
         private Button btnLoadInput;
+        private Button btnClearInput;
         private Label lblRefCount;
         private Label lblInputCount;
         private NumericUpDown numSensitivity;
@@ -46,8 +48,8 @@ namespace AnomalyDetector
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 Padding = new Padding(10)
             };
-            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200)); // 0
-            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200)); // 1
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); // 0
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); // 1
             mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200)); // 2
             mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200)); // 3
             mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200)); // 4
@@ -59,14 +61,24 @@ namespace AnomalyDetector
 
             btnLoadRef = new Button() { Text = "Load Reference (Sample 1)", AutoSize = true };
             btnLoadRef.Click += BtnLoadRef_Click;
-            mainLayout.Controls.Add(btnLoadRef, 0, 0);
+            btnClearRef = new Button() { Text = "Clear", AutoSize = true };
+            btnClearRef.Click += BtnClearRef_Click;
+            var refButtonsPanel = new FlowLayoutPanel() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+            refButtonsPanel.Controls.Add(btnLoadRef);
+            refButtonsPanel.Controls.Add(btnClearRef);
+            mainLayout.Controls.Add(refButtonsPanel, 0, 0);
 
             lblRefCount = new Label() { Text = "0 files", AutoSize = true, TextAlign = System.Drawing.ContentAlignment.MiddleLeft };
             mainLayout.Controls.Add(lblRefCount, 1, 0);
 
             btnLoadInput = new Button() { Text = "Load Input Samples", AutoSize = true };
             btnLoadInput.Click += BtnLoadInput_Click;
-            mainLayout.Controls.Add(btnLoadInput, 0, 1);
+            btnClearInput = new Button() { Text = "Clear", AutoSize = true };
+            btnClearInput.Click += BtnClearInput_Click;
+            var inputButtonsPanel = new FlowLayoutPanel() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+            inputButtonsPanel.Controls.Add(btnLoadInput);
+            inputButtonsPanel.Controls.Add(btnClearInput);
+            mainLayout.Controls.Add(inputButtonsPanel, 0, 1);
 
             lblInputCount = new Label() { Text = "0 files", AutoSize = true, TextAlign = System.Drawing.ContentAlignment.MiddleLeft };
             mainLayout.Controls.Add(lblInputCount, 1, 1);
@@ -116,6 +128,26 @@ namespace AnomalyDetector
             numTextureWeight.ValueChanged += (s, e) => UpdateAnalysisOverlays();
             chkRobustStats.CheckedChanged += (s, e) => UpdateAnalysisOverlays();
             chkTextureFeatures.CheckedChanged += (s, e) => UpdateAnalysisOverlays();
+        }
+
+        private void BtnClearRef_Click(object? sender, EventArgs e)
+        {
+            refFiles.Clear();
+            lblRefCount.Text = "0 files";
+            refThumbPanel.Controls.Clear();
+            // Keep a minimum reasonable width so layout remains stable
+            refThumbPanel.Width = 800;
+            // Clear any analysis results since inputs changed
+            flowResults.Controls.Clear();
+        }
+
+        private void BtnClearInput_Click(object? sender, EventArgs e)
+        {
+            inputFiles.Clear();
+            lblInputCount.Text = "0 files";
+            inputThumbPanel.Controls.Clear();
+            inputThumbPanel.Width = 800;
+            flowResults.Controls.Clear();
         }
 
         private void UpdateAnalysisOverlays()
