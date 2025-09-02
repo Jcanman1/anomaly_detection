@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "U0+DDTPjxsI=",
+  "dgSpecHash": "bSFB8Mv0+20=",
   "success": true,
-  "projectFilePath": "C:\\Users\\jcantu\\anomaly_detection\\csharp_anomaly_detector\\AnomalyDetector.csproj",
+  "projectFilePath": "C:\\Users\\jcantu\\anomaly_detection_clone\\csharp_anomaly_detector\\AnomalyDetector.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\jcantu\\.nuget\\packages\\sixlabors.fonts\\1.0.0\\sixlabors.fonts.1.0.0.nupkg.sha512",
     "C:\\Users\\jcantu\\.nuget\\packages\\sixlabors.imagesharp\\3.1.11\\sixlabors.imagesharp.3.1.11.nupkg.sha512",

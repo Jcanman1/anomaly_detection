@@ -20,8 +20,8 @@ namespace AnomalyDetector
         private Label lblInputCount;
         private NumericUpDown numSensitivity;
         private NumericUpDown numBorder;
-        private Button btnAnalyze;
-        private FlowLayoutPanel flowResults;
+    // Removed btnAnalyze
+    // Removed flowResults
         private CheckBox chkRobustStats;
         private CheckBox chkTextureFeatures;
         private NumericUpDown numTextureWeight;
@@ -34,6 +34,7 @@ namespace AnomalyDetector
 
         public MainForm()
             // Attach event handlers for live update
+
         {
             this.Text = "Anomaly Detector - WinForms GUI";
             this.Width = 2000;
@@ -106,13 +107,7 @@ namespace AnomalyDetector
             mainLayout.Controls.Add(chkTextureFeatures, 1, 3);
 
 
-            btnAnalyze = new Button() { Text = "Analyze", AutoSize = true, Height = 30 };
-            btnAnalyze.Click += BtnAnalyze_Click;
-            mainLayout.Controls.Add(btnAnalyze, 0, 4);
-
-            flowResults = new FlowLayoutPanel() { Dock = DockStyle.Fill, AutoScroll = true };
-            mainLayout.SetColumnSpan(flowResults, 6);
-            mainLayout.Controls.Add(flowResults, 0, 4);
+            // Removed flowResults from layout
 
             refThumbPanel = new FlowLayoutPanel() { AutoSize = false, Height = 500, Width = 2000, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, AutoScroll = true };
             inputThumbPanel = new FlowLayoutPanel() { AutoSize = false, Height = 500, Width = 2000, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, AutoScroll = true };
@@ -138,7 +133,7 @@ namespace AnomalyDetector
             // Keep a minimum reasonable width so layout remains stable
             refThumbPanel.Width = 800;
             // Clear any analysis results since inputs changed
-            flowResults.Controls.Clear();
+            refThumbPanel.Controls.Clear();
         }
 
         private void BtnClearInput_Click(object? sender, EventArgs e)
@@ -147,121 +142,124 @@ namespace AnomalyDetector
             lblInputCount.Text = "0 files";
             inputThumbPanel.Controls.Clear();
             inputThumbPanel.Width = 800;
-            flowResults.Controls.Clear();
+            inputThumbPanel.Controls.Clear();
         }
 
         private void UpdateAnalysisOverlays()
         {
-            if (refFiles.Count == 0 || inputFiles.Count == 0)
-                return;
-
-            flowResults.Controls.Clear();
-
-            var model = Analyzer.ComputeReferenceModel(refFiles.ToArray(), (int)numBorder.Value);
-            if (model == null)
-                return;
-
-            int maxThumbWidth = Math.Max(refThumbPanel.Width, inputThumbPanel.Width);
-            var mainResultsPanel = new FlowLayoutPanel() {
-                Width = maxThumbWidth,
-                AutoSize = true,
-                FlowDirection = FlowDirection.TopDown,
-                WrapContents = false
-            };
-
-            var refPanel = new Panel() { Width = maxThumbWidth, Height = 280, BorderStyle = BorderStyle.FixedSingle };
-            var refLabel = new Label() { Text = "Reference Images", Dock = DockStyle.Top, Height = 30, TextAlign = System.Drawing.ContentAlignment.MiddleCenter };
-            refPanel.Controls.Add(refLabel);
-            var refFlow = new FlowLayoutPanel() { Dock = DockStyle.Fill, AutoScroll = true };
-            refPanel.Controls.Add(refFlow);
-            refFlow.Dock = DockStyle.Fill;
-            foreach (var refPath in refFiles)
+            // Update overlays for reference images
+            refThumbPanel.Controls.Clear();
+            if (refFiles.Count > 0)
             {
-                var loaded = Analyzer.LoadRgbImage(refPath);
-                if (loaded == null) continue;
-
-                bool[,] mask;
-                if (chkTextureFeatures.Checked && chkRobustStats.Checked)
+                var model = Analyzer.ComputeReferenceModel(refFiles.ToArray(), (int)numBorder.Value);
+                foreach (var refPath in refFiles)
                 {
-                    mask = Analyzer.DetectAnomaliesEnhanced(
-                        model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value,
-                        true, (double)numTextureWeight.Value);
+                    var loaded = Analyzer.LoadRgbImage(refPath);
+                    if (loaded == null) continue;
+                    bool[,] mask;
+                    if (chkTextureFeatures.Checked && chkRobustStats.Checked)
+                    {
+                        mask = Analyzer.DetectAnomaliesEnhanced(
+                            model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value,
+                            true, (double)numTextureWeight.Value);
+                    }
+                    else if (chkRobustStats.Checked)
+                    {
+                        mask = Analyzer.DetectAnomaliesRobust(
+                            model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value, true);
+                    }
+                    else
+                    {
+                        mask = Analyzer.DetectAnomalies(model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value);
+                    }
+                    var highlighted = Analyzer.CreateHighlightedImage(loaded.Value, mask);
+                    highlighted.Mutate(x => x.Resize(200, 200));
+                    using var ms = new MemoryStream();
+                    highlighted.Save(ms, new PngEncoder());
+                    ms.Seek(0, SeekOrigin.Begin);
+                    var bmp = new System.Drawing.Bitmap(ms);
+                    var pic = new PictureBox() {
+                        Width = 200,
+                        Height = 200,
+                        SizeMode = PictureBoxSizeMode.Zoom,
+                        Image = new System.Drawing.Bitmap(bmp),
+                        Margin = new Padding(5)
+                    };
+                    pic.Dock = DockStyle.None;
+                    refThumbPanel.Controls.Add(pic);
+                    bmp.Dispose();
                 }
-                else if (chkRobustStats.Checked)
-                {
-                    mask = Analyzer.DetectAnomaliesRobust(
-                        model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value, true);
-                }
-                else
-                {
-                    mask = Analyzer.DetectAnomalies(model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value);
-                }
-
-                var highlighted = Analyzer.CreateHighlightedImage(loaded.Value, mask);
-                using var ms = new MemoryStream();
-                highlighted.Save(ms, new PngEncoder());
-                ms.Seek(0, SeekOrigin.Begin);
-                var bmp = new System.Drawing.Bitmap(ms);
-                var pic = new PictureBox();
-                pic.Width = 220; pic.Height = 220; pic.SizeMode = PictureBoxSizeMode.Zoom;
-                pic.Image = new System.Drawing.Bitmap(bmp);
-                var lbl = new Label() { Text = Path.GetFileName(refPath), Dock = DockStyle.Bottom, Height = 40, TextAlign = System.Drawing.ContentAlignment.MiddleCenter };
-                var imgPanel = new Panel() { Width = 240, Height = 260 };
-                imgPanel.Controls.Add(pic);
-                pic.Dock = DockStyle.Top;
-                imgPanel.Controls.Add(lbl);
-                refFlow.Controls.Add(imgPanel);
-                bmp.Dispose();
             }
-            mainResultsPanel.Controls.Add(refPanel);
 
-            var inputPanel = new Panel() { Width = maxThumbWidth, Height = 280, BorderStyle = BorderStyle.FixedSingle };
-            var inputLabel = new Label() { Text = "Input Images", Dock = DockStyle.Top, Height = 30, TextAlign = System.Drawing.ContentAlignment.MiddleCenter };
-            inputPanel.Controls.Add(inputLabel);
-            var inputFlow = new FlowLayoutPanel() { Dock = DockStyle.Fill, AutoScroll = true };
-            inputPanel.Controls.Add(inputFlow);
-            inputFlow.Dock = DockStyle.Fill;
-            foreach (var input in inputFiles)
+            // Update overlays for input images
+            inputThumbPanel.Controls.Clear();
+            if (inputFiles.Count > 0 && refFiles.Count > 0)
             {
-                var loaded = Analyzer.LoadRgbImage(input);
-                if (loaded == null) continue;
-
-                bool[,] mask;
-                if (chkTextureFeatures.Checked && chkRobustStats.Checked)
+                var model = Analyzer.ComputeReferenceModel(refFiles.ToArray(), (int)numBorder.Value);
+                foreach (var file in inputFiles)
                 {
-                    mask = Analyzer.DetectAnomaliesEnhanced(
-                        model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value,
-                        true, (double)numTextureWeight.Value);
+                    var loaded = Analyzer.LoadRgbImage(file);
+                    if (loaded == null) continue;
+                    bool[,] mask;
+                    if (chkTextureFeatures.Checked && chkRobustStats.Checked)
+                    {
+                        mask = Analyzer.DetectAnomaliesEnhanced(
+                            model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value,
+                            true, (double)numTextureWeight.Value);
+                    }
+                    else if (chkRobustStats.Checked)
+                    {
+                        mask = Analyzer.DetectAnomaliesRobust(
+                            model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value, true);
+                    }
+                    else
+                    {
+                        mask = Analyzer.DetectAnomalies(model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value);
+                    }
+                    var highlighted = Analyzer.CreateHighlightedImage(loaded.Value, mask);
+                    highlighted.Mutate(x => x.Resize(200, 200));
+                    using var ms = new MemoryStream();
+                    highlighted.Save(ms, new PngEncoder());
+                    ms.Seek(0, SeekOrigin.Begin);
+                    var bmp = new System.Drawing.Bitmap(ms);
+                    var pic = new PictureBox() {
+                        Width = 200,
+                        Height = 200,
+                        SizeMode = PictureBoxSizeMode.Zoom,
+                        Image = new System.Drawing.Bitmap(bmp),
+                        Margin = new Padding(5)
+                    };
+                    pic.Dock = DockStyle.None;
+                    inputThumbPanel.Controls.Add(pic);
+                    bmp.Dispose();
                 }
-                else if (chkRobustStats.Checked)
-                {
-                    mask = Analyzer.DetectAnomaliesRobust(
-                        model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value, true);
-                }
-                else
-                {
-                    mask = Analyzer.DetectAnomalies(model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value);
-                }
-
-                var highlighted = Analyzer.CreateHighlightedImage(loaded.Value, mask);
-                using var ms = new MemoryStream();
-                highlighted.Save(ms, new PngEncoder());
-                ms.Seek(0, SeekOrigin.Begin);
-                var bmp = new System.Drawing.Bitmap(ms);
-                var pic = new PictureBox();
-                pic.Width = 220; pic.Height = 220; pic.SizeMode = PictureBoxSizeMode.Zoom;
-                pic.Image = new System.Drawing.Bitmap(bmp);
-                var lbl = new Label() { Text = Path.GetFileName(input), Dock = DockStyle.Bottom, Height = 40, TextAlign = System.Drawing.ContentAlignment.MiddleCenter };
-                var imgPanel = new Panel() { Width = 240, Height = 260 };
-                imgPanel.Controls.Add(pic);
-                pic.Dock = DockStyle.Top;
-                imgPanel.Controls.Add(lbl);
-                inputFlow.Controls.Add(imgPanel);
-                bmp.Dispose();
             }
-            mainResultsPanel.Controls.Add(inputPanel);
-
-            flowResults.Controls.Add(mainResultsPanel);
+            else if (inputFiles.Count > 0)
+            {
+                foreach (var file in inputFiles)
+                {
+                    try
+                    {
+                        using var img = SixLabors.ImageSharp.Image.Load<Rgba32>(file);
+                        img.Mutate(x => x.Resize(200, 200));
+                        using var ms = new MemoryStream();
+                        img.Save(ms, new PngEncoder());
+                        ms.Seek(0, SeekOrigin.Begin);
+                        var bmp = new System.Drawing.Bitmap(ms);
+                        var pic = new PictureBox() {
+                            Width = 200,
+                            Height = 200,
+                            SizeMode = PictureBoxSizeMode.Zoom,
+                            Image = new System.Drawing.Bitmap(bmp),
+                            Margin = new Padding(5)
+                        };
+                        pic.Dock = DockStyle.None;
+                        inputThumbPanel.Controls.Add(pic);
+                        bmp.Dispose();
+                    }
+                    catch { }
+                }
+            }
         }
 
         private void BtnLoadRef_Click(object? sender, EventArgs e)
@@ -334,28 +332,76 @@ namespace AnomalyDetector
                         inputFiles.Add(file);
                     }
                 }
-                
+
                 // Calculate dynamic width based on number of images
                 int imageWidth = 200; // width of each thumbnail
                 int margin = 5; // margin between images
                 int minWidth = 800; // minimum width
                 int calculatedWidth = Math.Max(minWidth, (inputFiles.Count * (imageWidth + margin)) + 50);
-                
+
                 inputThumbPanel.Width = calculatedWidth;
                 lblInputCount.Text = $"{inputFiles.Count} files";
-                
-                // Update thumbnails without clearing
+
+                // Apply overlays directly to the input thumbnails at the top
                 inputThumbPanel.Controls.Clear();
+                // Removed flowResults.Controls.Clear();
+                bool hasRef = refFiles.Count > 0;
+                ReferenceModel? model = null;
+                if (hasRef)
+                {
+                    model = Analyzer.ComputeReferenceModel(refFiles.ToArray(), (int)numBorder.Value);
+                }
                 foreach (var file in inputFiles)
                 {
                     try
                     {
                         using var img = SixLabors.ImageSharp.Image.Load<Rgba32>(file);
                         img.Mutate(x => x.Resize(200, 200));
-                        using var ms = new MemoryStream();
-                        img.Save(ms, new PngEncoder());
-                        ms.Seek(0, SeekOrigin.Begin);
-                        var bmp = new System.Drawing.Bitmap(ms);
+                        System.Drawing.Bitmap bmp;
+                        if (hasRef && model is not null)
+                        {
+                            bool[,] mask;
+                            var loaded = Analyzer.LoadRgbImage(file);
+                            if (loaded == null)
+                            {
+                                // fallback to original image
+                                using var ms = new MemoryStream();
+                                img.Save(ms, new PngEncoder());
+                                ms.Seek(0, SeekOrigin.Begin);
+                                bmp = new System.Drawing.Bitmap(ms);
+                            }
+                            else
+                            {
+                                if (chkTextureFeatures.Checked && chkRobustStats.Checked)
+                                {
+                                    mask = Analyzer.DetectAnomaliesEnhanced(
+                                        model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value,
+                                        true, (double)numTextureWeight.Value);
+                                }
+                                else if (chkRobustStats.Checked)
+                                {
+                                    mask = Analyzer.DetectAnomaliesRobust(
+                                        model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value, true);
+                                }
+                                else
+                                {
+                                    mask = Analyzer.DetectAnomalies(model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value);
+                                }
+                                var highlighted = Analyzer.CreateHighlightedImage(loaded.Value, mask);
+                                highlighted.Mutate(x => x.Resize(200, 200));
+                                using var ms = new MemoryStream();
+                                highlighted.Save(ms, new PngEncoder());
+                                ms.Seek(0, SeekOrigin.Begin);
+                                bmp = new System.Drawing.Bitmap(ms);
+                            }
+                        }
+                        else
+                        {
+                            using var ms = new MemoryStream();
+                            img.Save(ms, new PngEncoder());
+                            ms.Seek(0, SeekOrigin.Begin);
+                            bmp = new System.Drawing.Bitmap(ms);
+                        }
                         var pic = new PictureBox() {
                             Width = 200,
                             Height = 200,
@@ -374,144 +420,7 @@ namespace AnomalyDetector
 
         private async void BtnAnalyze_Click(object? sender, EventArgs e)
         {
-            if (refFiles.Count == 0)
-            {
-                MessageBox.Show(this, "Please load at least one reference image (Sample 1)", "Missing Reference", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-            if (inputFiles.Count == 0)
-            {
-                MessageBox.Show(this, "Please load at least one input image to analyze", "Missing Input", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            btnAnalyze.Enabled = false;
-            flowResults.Controls.Clear();
-
-            var model = Analyzer.ComputeReferenceModel(refFiles.ToArray(), (int)numBorder.Value);
-            if (model == null)
-            {
-                MessageBox.Show(this, "Failed to compute reference model from loaded reference images.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                btnAnalyze.Enabled = true;
-                return;
-            }
-
-            try
-            {
-                // Get the maximum width from both thumbnail panels
-                int maxThumbWidth = Math.Max(refThumbPanel.Width, inputThumbPanel.Width);
-                
-                // Create a main container for analyzed results with vertical layout
-                var mainResultsPanel = new FlowLayoutPanel() { 
-                    Width = maxThumbWidth, 
-                    AutoSize = true, 
-                    FlowDirection = FlowDirection.TopDown,
-                    WrapContents = false
-                };
-                
-                // Group results by sample: Reference above Input
-                var refPanel = new Panel() { Width = maxThumbWidth, Height = 280, BorderStyle = BorderStyle.FixedSingle };
-                var refLabel = new Label() { Text = "Reference Images", Dock = DockStyle.Top, Height = 30, TextAlign = System.Drawing.ContentAlignment.MiddleCenter };
-                refPanel.Controls.Add(refLabel);
-                var refFlow = new FlowLayoutPanel() { Dock = DockStyle.Fill, AutoScroll = true };
-                refPanel.Controls.Add(refFlow);
-                refFlow.Dock = DockStyle.Fill;
-                foreach (var refPath in refFiles)
-                {
-                    var loaded = Analyzer.LoadRgbImage(refPath);
-                    if (loaded == null) continue;
-
-                    // Choose detection method based on user selection
-                    bool[,] mask;
-                    if (chkTextureFeatures.Checked && chkRobustStats.Checked)
-                    {
-                        mask = Analyzer.DetectAnomaliesEnhanced(
-                            model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value,
-                            true, (double)numTextureWeight.Value);
-                    }
-                    else if (chkRobustStats.Checked)
-                    {
-                        mask = Analyzer.DetectAnomaliesRobust(
-                            model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value, true);
-                    }
-                    else
-                    {
-                        mask = Analyzer.DetectAnomalies(model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value);
-                    }
-
-                    var highlighted = Analyzer.CreateHighlightedImage(loaded.Value, mask);
-                    using var ms = new MemoryStream();
-                    highlighted.Save(ms, new PngEncoder());
-                    ms.Seek(0, SeekOrigin.Begin);
-                    var bmp = new System.Drawing.Bitmap(ms);
-                    var pic = new PictureBox();
-                    pic.Width = 220; pic.Height = 220; pic.SizeMode = PictureBoxSizeMode.Zoom;
-                    pic.Image = new System.Drawing.Bitmap(bmp);
-                    var lbl = new Label() { Text = Path.GetFileName(refPath), Dock = DockStyle.Bottom, Height = 40, TextAlign = System.Drawing.ContentAlignment.MiddleCenter };
-                    var imgPanel = new Panel() { Width = 240, Height = 260 };
-                    imgPanel.Controls.Add(pic);
-                    pic.Dock = DockStyle.Top;
-                    imgPanel.Controls.Add(lbl);
-                    refFlow.Controls.Add(imgPanel);
-                    bmp.Dispose();
-                }
-                mainResultsPanel.Controls.Add(refPanel);
-
-                var inputPanel = new Panel() { Width = maxThumbWidth, Height = 280, BorderStyle = BorderStyle.FixedSingle };
-                var inputLabel = new Label() { Text = "Input Images", Dock = DockStyle.Top, Height = 30, TextAlign = System.Drawing.ContentAlignment.MiddleCenter };
-                inputPanel.Controls.Add(inputLabel);
-                var inputFlow = new FlowLayoutPanel() { Dock = DockStyle.Fill, AutoScroll = true };
-                inputPanel.Controls.Add(inputFlow);
-                inputFlow.Dock = DockStyle.Fill;
-                foreach (var input in inputFiles)
-                {
-                    var loaded = Analyzer.LoadRgbImage(input);
-                    if (loaded == null) continue;
-
-                    // Choose detection method based on user selection
-                    bool[,] mask;
-                    if (chkTextureFeatures.Checked && chkRobustStats.Checked)
-                    {
-                        mask = Analyzer.DetectAnomaliesEnhanced(
-                            model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value,
-                            true, (double)numTextureWeight.Value);
-                    }
-                    else if (chkRobustStats.Checked)
-                    {
-                        mask = Analyzer.DetectAnomaliesRobust(
-                            model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value, true);
-                    }
-                    else
-                    {
-                        mask = Analyzer.DetectAnomalies(model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value);
-                    }
-
-                    var highlighted = Analyzer.CreateHighlightedImage(loaded.Value, mask);
-                    using var ms = new MemoryStream();
-                    highlighted.Save(ms, new PngEncoder());
-                    ms.Seek(0, SeekOrigin.Begin);
-                    var bmp = new System.Drawing.Bitmap(ms);
-                    var pic = new PictureBox();
-                    pic.Width = 220; pic.Height = 220; pic.SizeMode = PictureBoxSizeMode.Zoom;
-                    pic.Image = new System.Drawing.Bitmap(bmp);
-                    var lbl = new Label() { Text = Path.GetFileName(input), Dock = DockStyle.Bottom, Height = 40, TextAlign = System.Drawing.ContentAlignment.MiddleCenter };
-                    var imgPanel = new Panel() { Width = 240, Height = 260 };
-                    imgPanel.Controls.Add(pic);
-                    pic.Dock = DockStyle.Top;
-                    imgPanel.Controls.Add(lbl);
-                    inputFlow.Controls.Add(imgPanel);
-                    bmp.Dispose();
-                }
-                mainResultsPanel.Controls.Add(inputPanel);
-                
-                flowResults.Controls.Add(mainResultsPanel);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(this, "Error during analysis: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-
-            btnAnalyze.Enabled = true;
+    // Removed BtnAnalyze_Click and all related logic
         }
     }
 }

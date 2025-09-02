@@ -120,11 +120,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\jcantu\\anomaly_detection\\csharp_anomaly_detector\\AnomalyDetector.csproj",
+      "projectUniqueName": "C:\\Users\\jcantu\\anomaly_detection_clone\\csharp_anomaly_detector\\AnomalyDetector.csproj",
       "projectName": "AnomalyDetector",
-      "projectPath": "C:\\Users\\jcantu\\anomaly_detection\\csharp_anomaly_detector\\AnomalyDetector.csproj",
+      "projectPath": "C:\\Users\\jcantu\\anomaly_detection_clone\\csharp_anomaly_detector\\AnomalyDetector.csproj",
       "packagesPath": "C:\\Users\\jcantu\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\jcantu\\anomaly_detection\\csharp_anomaly_detector\\obj\\",
+      "outputPath": "C:\\Users\\jcantu\\anomaly_detection_clone\\csharp_anomaly_detector\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\jcantu\\AppData\\Roaming\\NuGet\\NuGet.Config"
