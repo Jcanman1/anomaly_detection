@@ -18,11 +18,12 @@ namespace AnomalyDetector
 
         static int Main(string[] args)
         {
-            if (args.Length == 0)
-            {
-                PrintUsage();
-                return 1;
-            }
+            // Always launch 3D plot window at startup
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            var labWindow = new Lab3DWindow();
+            labWindow.UpdateLabPoints(new List<double[]>(), new List<double[]>()); // Start with empty lists
+            Application.Run(labWindow);
 
             string refs = null!;
             string inputs = null!;

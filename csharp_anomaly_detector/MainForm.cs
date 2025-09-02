@@ -29,13 +29,23 @@ namespace AnomalyDetector
         private List<string> refFiles = new List<string>();
         private List<string> inputFiles = new List<string>();
 
-        private FlowLayoutPanel refThumbPanel;
-        private FlowLayoutPanel inputThumbPanel;
+    private FlowLayoutPanel refThumbPanel;
+    private FlowLayoutPanel inputThumbPanel;
+    private Button btnShowLab3D;
 
-        public MainForm()
-            // Attach event handlers for live update
-
+        private Lab3DWindow? lab3DWindow;
+    // Removed Lab3DForm reference
+    public MainForm()
         {
+            // Attach event handlers for live update
+            this.Shown += (s, e) => {
+                if (lab3DWindow == null || lab3DWindow.IsDisposed)
+                {
+                    lab3DWindow = new Lab3DWindow();
+                    lab3DWindow.UpdateLabPoints(new List<double[]>(), new List<double[]>());
+                    lab3DWindow.Show();
+                }
+            };
             this.Text = "Anomaly Detector - WinForms GUI";
             this.Width = 2000;
             this.Height = 1200;
@@ -86,7 +96,7 @@ namespace AnomalyDetector
 
             var lblSens = new Label() { Text = "Sensitivity:", AutoSize = true, TextAlign = System.Drawing.ContentAlignment.MiddleLeft };
             mainLayout.Controls.Add(lblSens, 0, 2);
-            numSensitivity = new NumericUpDown() { DecimalPlaces = 2, Increment = 0.05M, Minimum = 0.5M, Maximum = 20M, Value = 2.50M, AutoSize = true };
+            numSensitivity = new NumericUpDown() { DecimalPlaces = 2, Increment = 0.05M, Minimum = 0.5M, Maximum = 20M, Value = 2.75M, AutoSize = true };
             mainLayout.Controls.Add(numSensitivity, 1, 2);
 
             var lblBorder = new Label() { Text = "Border erosion:", AutoSize = true, TextAlign = System.Drawing.ContentAlignment.MiddleLeft };
@@ -96,14 +106,14 @@ namespace AnomalyDetector
 
             var lblTextureWeight = new Label() { Text = "Texture Weight:", AutoSize = true, TextAlign = System.Drawing.ContentAlignment.MiddleLeft };
             mainLayout.Controls.Add(lblTextureWeight, 4, 2);
-            numTextureWeight = new NumericUpDown() { DecimalPlaces = 2, Increment = 0.1M, Minimum = 0M, Maximum = 1M, Value = 0.3M, AutoSize = true };
+            numTextureWeight = new NumericUpDown() { DecimalPlaces = 2, Increment = 0.05M, Minimum = 0M, Maximum = 1M, Value = 0.35M, AutoSize = true };
             mainLayout.Controls.Add(numTextureWeight, 5, 2);
 
             // Add enhanced detection options
             chkRobustStats = new CheckBox() { Text = "Use Robust Statistics (MAD)", Checked = true, AutoSize = true };
             mainLayout.Controls.Add(chkRobustStats, 0, 3);
 
-            chkTextureFeatures = new CheckBox() { Text = "Use Texture Features", Checked = false, AutoSize = true };
+            chkTextureFeatures = new CheckBox() { Text = "Use Texture Features", Checked = true, AutoSize = true };
             mainLayout.Controls.Add(chkTextureFeatures, 1, 3);
 
 
@@ -117,12 +127,89 @@ namespace AnomalyDetector
             mainLayout.SetColumnSpan(inputThumbPanel, 4);
 
             this.Controls.Add(mainLayout);
+            btnShowLab3D = new Button() { Text = "Show 3D LAB Visualization", AutoSize = true };
+            btnShowLab3D.Click += BtnShowLab3D_Click;
+            mainLayout.Controls.Add(btnShowLab3D, 0, 4);
             // Attach event handlers for live update (after controls are initialized)
-            numSensitivity.ValueChanged += (s, e) => UpdateAnalysisOverlays();
-            numBorder.ValueChanged += (s, e) => UpdateAnalysisOverlays();
-            numTextureWeight.ValueChanged += (s, e) => UpdateAnalysisOverlays();
-            chkRobustStats.CheckedChanged += (s, e) => UpdateAnalysisOverlays();
-            chkTextureFeatures.CheckedChanged += (s, e) => UpdateAnalysisOverlays();
+            numSensitivity.ValueChanged += (s, e) => { UpdateAnalysisOverlays(); UpdateLab3DVisualization(); };
+            numBorder.ValueChanged += (s, e) => { UpdateAnalysisOverlays(); UpdateLab3DVisualization(); };
+            numTextureWeight.ValueChanged += (s, e) => { UpdateAnalysisOverlays(); UpdateLab3DVisualization(); };
+            chkTextureFeatures.CheckedChanged += (s, e) => { UpdateAnalysisOverlays(); UpdateLab3DVisualization(); };
+        } // End of MainForm constructor
+
+        private void BtnShowLab3D_Click(object? sender, EventArgs e)
+        {
+            if (lab3DWindow == null)
+            {
+                lab3DWindow = new Lab3DWindow();
+            }
+            UpdateLab3DVisualization();
+            lab3DWindow.Show();
+    }
+
+        private void UpdateLab3DVisualization()
+        {
+            if (lab3DWindow == null) return;
+            if (refFiles.Count == 0 || inputFiles.Count == 0) return;
+            var model = Analyzer.ComputeReferenceModel(refFiles.ToArray(), (int)numBorder.Value);
+            if (model == null) return;
+            var refLab = new List<double[]>();
+            foreach (var refPath in refFiles)
+            {
+                var loaded = Analyzer.LoadRgbImage(refPath);
+                if (loaded == null) continue;
+                var (img, pixels) = loaded.Value;
+                int W = img.Width, H = img.Height;
+                for (int y = 0; y < H; y++) for (int x = 0; x < W; x++)
+                {
+                    var px = pixels[y * W + x];
+                    var lab = Analyzer.RgbToLab(px.R, px.G, px.B);
+                    refLab.Add(lab);
+                }
+                img.Dispose();
+            }
+            var anomalyLab = new List<double[]>();
+            foreach (var file in inputFiles)
+            {
+                var loaded = Analyzer.LoadRgbImage(file);
+                if (loaded == null) continue;
+                var (img, pixels) = loaded.Value;
+                int W = img.Width, H = img.Height;
+                bool[,] mask;
+                if (model != null)
+                {
+                    if (chkTextureFeatures.Checked && chkRobustStats.Checked)
+                    {
+                        mask = Analyzer.DetectAnomaliesEnhanced(
+                            model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value,
+                            true, (double)numTextureWeight.Value);
+                    }
+                    else if (chkRobustStats.Checked)
+                    {
+                        mask = Analyzer.DetectAnomaliesRobust(
+                            model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value, true);
+                    }
+                    else
+                    {
+                        mask = Analyzer.DetectAnomalies(model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value);
+                    }
+                }
+                else
+                {
+                    continue;
+                }
+                for (int y = 0; y < H; y++) for (int x = 0; x < W; x++)
+                {
+                    if (mask[y, x])
+                    {
+                        var px = pixels[y * W + x];
+                        var lab = Analyzer.RgbToLab(px.R, px.G, px.B);
+                        anomalyLab.Add(lab);
+                    }
+                }
+                img.Dispose();
+            }
+            lab3DWindow?.UpdateLabPoints(refLab, anomalyLab);
         }
 
         private void BtnClearRef_Click(object? sender, EventArgs e)
@@ -130,10 +217,8 @@ namespace AnomalyDetector
             refFiles.Clear();
             lblRefCount.Text = "0 files";
             refThumbPanel.Controls.Clear();
-            // Keep a minimum reasonable width so layout remains stable
             refThumbPanel.Width = 800;
-            // Clear any analysis results since inputs changed
-            refThumbPanel.Controls.Clear();
+            UpdateLab3DVisualization();
         }
 
         private void BtnClearInput_Click(object? sender, EventArgs e)
@@ -142,52 +227,37 @@ namespace AnomalyDetector
             lblInputCount.Text = "0 files";
             inputThumbPanel.Controls.Clear();
             inputThumbPanel.Width = 800;
-            inputThumbPanel.Controls.Clear();
+            UpdateLab3DVisualization();
         }
 
         private void UpdateAnalysisOverlays()
         {
-            // Update overlays for reference images
+            // Reference images: always show original thumbnails only
             refThumbPanel.Controls.Clear();
             if (refFiles.Count > 0)
             {
-                var model = Analyzer.ComputeReferenceModel(refFiles.ToArray(), (int)numBorder.Value);
                 foreach (var refPath in refFiles)
                 {
-                    var loaded = Analyzer.LoadRgbImage(refPath);
-                    if (loaded == null) continue;
-                    bool[,] mask;
-                    if (chkTextureFeatures.Checked && chkRobustStats.Checked)
+                    try
                     {
-                        mask = Analyzer.DetectAnomaliesEnhanced(
-                            model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value,
-                            true, (double)numTextureWeight.Value);
+                        using var img = SixLabors.ImageSharp.Image.Load<Rgba32>(refPath);
+                        img.Mutate(x => x.Resize(200, 200));
+                        using var ms = new MemoryStream();
+                        img.Save(ms, new PngEncoder());
+                        ms.Seek(0, SeekOrigin.Begin);
+                        var bmp = new System.Drawing.Bitmap(ms);
+                        var pic = new PictureBox() {
+                            Width = 200,
+                            Height = 200,
+                            SizeMode = PictureBoxSizeMode.Zoom,
+                            Image = new System.Drawing.Bitmap(bmp),
+                            Margin = new Padding(5)
+                        };
+                        pic.Dock = DockStyle.None;
+                        refThumbPanel.Controls.Add(pic);
+                        bmp.Dispose();
                     }
-                    else if (chkRobustStats.Checked)
-                    {
-                        mask = Analyzer.DetectAnomaliesRobust(
-                            model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value, true);
-                    }
-                    else
-                    {
-                        mask = Analyzer.DetectAnomalies(model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value);
-                    }
-                    var highlighted = Analyzer.CreateHighlightedImage(loaded.Value, mask);
-                    highlighted.Mutate(x => x.Resize(200, 200));
-                    using var ms = new MemoryStream();
-                    highlighted.Save(ms, new PngEncoder());
-                    ms.Seek(0, SeekOrigin.Begin);
-                    var bmp = new System.Drawing.Bitmap(ms);
-                    var pic = new PictureBox() {
-                        Width = 200,
-                        Height = 200,
-                        SizeMode = PictureBoxSizeMode.Zoom,
-                        Image = new System.Drawing.Bitmap(bmp),
-                        Margin = new Padding(5)
-                    };
-                    pic.Dock = DockStyle.None;
-                    refThumbPanel.Controls.Add(pic);
-                    bmp.Dispose();
+                    catch { }
                 }
             }
 
@@ -196,10 +266,26 @@ namespace AnomalyDetector
             if (inputFiles.Count > 0 && refFiles.Count > 0)
             {
                 var model = Analyzer.ComputeReferenceModel(refFiles.ToArray(), (int)numBorder.Value);
+                // Compute reference and anomaly LAB points and update ellipsoid before overlays
+                var refLab = new List<double[]>();
+                foreach (var refPath in refFiles)
+                {
+                    var loaded = Analyzer.LoadRgbImage(refPath);
+                    if (loaded == null) continue;
+                    int W = loaded.Value.Image.Width, H = loaded.Value.Image.Height;
+                    for (int y = 0; y < H; y++) for (int x = 0; x < W; x++)
+                    {
+                        var px = loaded.Value.Pixels[y * W + x];
+                        var lab = Analyzer.RgbToLab(px.R, px.G, px.B);
+                        refLab.Add(lab);
+                    }
+                }
+                var anomalyLab = new List<double[]>();
                 foreach (var file in inputFiles)
                 {
                     var loaded = Analyzer.LoadRgbImage(file);
                     if (loaded == null) continue;
+                    int W = loaded.Value.Image.Width, H = loaded.Value.Image.Height;
                     bool[,] mask;
                     if (chkTextureFeatures.Checked && chkRobustStats.Checked)
                     {
@@ -216,7 +302,41 @@ namespace AnomalyDetector
                     {
                         mask = Analyzer.DetectAnomalies(model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value);
                     }
-                    var highlighted = Analyzer.CreateHighlightedImage(loaded.Value, mask);
+                    for (int y = 0; y < H; y++) for (int x = 0; x < W; x++)
+                    {
+                        if (mask[y, x])
+                        {
+                            var px = loaded.Value.Pixels[y * W + x];
+                            var lab = Analyzer.RgbToLab(px.R, px.G, px.B);
+                            anomalyLab.Add(lab);
+                        }
+                    }
+                }
+                // Update ellipsoid and reference/anomaly points in Lab3DWindow
+                lab3DWindow?.UpdateLabPoints(refLab, anomalyLab);
+                // Now create overlays with ellipsoid available
+                foreach (var file in inputFiles)
+                {
+                    var loaded = Analyzer.LoadRgbImage(file);
+                    if (loaded == null) continue;
+                    int W = loaded.Value.Image.Width, H = loaded.Value.Image.Height;
+                    bool[,] mask;
+                    if (chkTextureFeatures.Checked && chkRobustStats.Checked)
+                    {
+                        mask = Analyzer.DetectAnomaliesEnhanced(
+                            model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value,
+                            true, (double)numTextureWeight.Value);
+                    }
+                    else if (chkRobustStats.Checked)
+                    {
+                        mask = Analyzer.DetectAnomaliesRobust(
+                            model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value, true);
+                    }
+                    else
+                    {
+                        mask = Analyzer.DetectAnomalies(model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value);
+                    }
+                    var highlighted = Analyzer.CreateHighlightedImage(loaded.Value, mask, lab3DWindow?.GetEllipsoid());
                     highlighted.Mutate(x => x.Resize(200, 200));
                     using var ms = new MemoryStream();
                     highlighted.Save(ms, new PngEncoder());
@@ -314,6 +434,7 @@ namespace AnomalyDetector
                     catch { }
                 }
             }
+            UpdateLab3DVisualization();
         }
 
         private void BtnLoadInput_Click(object? sender, EventArgs e)
@@ -342,85 +463,10 @@ namespace AnomalyDetector
                 inputThumbPanel.Width = calculatedWidth;
                 lblInputCount.Text = $"{inputFiles.Count} files";
 
-                // Apply overlays directly to the input thumbnails at the top
-                inputThumbPanel.Controls.Clear();
-                // Removed flowResults.Controls.Clear();
-                bool hasRef = refFiles.Count > 0;
-                ReferenceModel? model = null;
-                if (hasRef)
-                {
-                    model = Analyzer.ComputeReferenceModel(refFiles.ToArray(), (int)numBorder.Value);
-                }
-                foreach (var file in inputFiles)
-                {
-                    try
-                    {
-                        using var img = SixLabors.ImageSharp.Image.Load<Rgba32>(file);
-                        img.Mutate(x => x.Resize(200, 200));
-                        System.Drawing.Bitmap bmp;
-                        if (hasRef && model is not null)
-                        {
-                            bool[,] mask;
-                            var loaded = Analyzer.LoadRgbImage(file);
-                            if (loaded == null)
-                            {
-                                // fallback to original image
-                                using var ms = new MemoryStream();
-                                img.Save(ms, new PngEncoder());
-                                ms.Seek(0, SeekOrigin.Begin);
-                                bmp = new System.Drawing.Bitmap(ms);
-                            }
-                            else
-                            {
-                                if (chkTextureFeatures.Checked && chkRobustStats.Checked)
-                                {
-                                    mask = Analyzer.DetectAnomaliesEnhanced(
-                                        model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value,
-                                        true, (double)numTextureWeight.Value);
-                                }
-                                else if (chkRobustStats.Checked)
-                                {
-                                    mask = Analyzer.DetectAnomaliesRobust(
-                                        model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value, true);
-                                }
-                                else
-                                {
-                                    mask = Analyzer.DetectAnomalies(model, loaded.Value, (double)numSensitivity.Value, (int)numBorder.Value);
-                                }
-                                var highlighted = Analyzer.CreateHighlightedImage(loaded.Value, mask);
-                                highlighted.Mutate(x => x.Resize(200, 200));
-                                using var ms = new MemoryStream();
-                                highlighted.Save(ms, new PngEncoder());
-                                ms.Seek(0, SeekOrigin.Begin);
-                                bmp = new System.Drawing.Bitmap(ms);
-                            }
-                        }
-                        else
-                        {
-                            using var ms = new MemoryStream();
-                            img.Save(ms, new PngEncoder());
-                            ms.Seek(0, SeekOrigin.Begin);
-                            bmp = new System.Drawing.Bitmap(ms);
-                        }
-                        var pic = new PictureBox() {
-                            Width = 200,
-                            Height = 200,
-                            SizeMode = PictureBoxSizeMode.Zoom,
-                            Image = new System.Drawing.Bitmap(bmp),
-                            Margin = new Padding(5)
-                        };
-                        pic.Dock = DockStyle.None;
-                        inputThumbPanel.Controls.Add(pic);
-                        bmp.Dispose();
-                    }
-                    catch { }
-                }
+                // Always update both visualization and overlays to sync ellipsoid coverage
+                UpdateLab3DVisualization();
+                UpdateAnalysisOverlays();
             }
-        }
-
-        private async void BtnAnalyze_Click(object? sender, EventArgs e)
-        {
-    // Removed BtnAnalyze_Click and all related logic
         }
     }
 }

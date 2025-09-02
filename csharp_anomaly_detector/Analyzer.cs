@@ -172,8 +172,65 @@ namespace AnomalyDetector
 
         public static Image<Rgba32> CreateHighlightedImage((Image<Rgba32> Image, Rgba32[] Pixels) imgData, bool[,] anomalyMask)
         {
+            return CreateHighlightedImage(imgData, anomalyMask, null);
+        }
+
+        // Overload: accepts ellipsoid
+        public static Image<Rgba32> CreateHighlightedImage((Image<Rgba32> Image, Rgba32[] Pixels) imgData, bool[,] anomalyMask, object? ellipsoidObj)
+        {
             var img = imgData.Image.Clone();
             int W = img.Width, H = img.Height;
+            // If ellipsoidObj is not null, extract parameters
+            double[]? center = null, axes = null; double[,]? rot = null;
+            string debugPath = "debug_log.txt";
+            // Overwrite debug log at the start of each overlay generation
+            System.IO.File.WriteAllText(debugPath, "==== New Overlay Generation ====" + System.Environment.NewLine);
+            int anomalyPixelCount = 0;
+            if (ellipsoidObj != null)
+            {
+                dynamic ellipsoid = ellipsoidObj;
+                center = ellipsoid.Center;
+                axes = ellipsoid.AxesLengths;
+                rot = ellipsoid.Rotation;
+                // Dynamically scale axes until at least 80% of anomaly pixels are inside
+                if (center != null && axes != null && rot != null)
+                {
+                    int total = 0, bestInside = 0;
+                    double bestScale = 1.0;
+                    double[] scaledAxes = new double[3];
+                    var anomalyLabPixels = new List<double[]>();
+                    for (int y = 0; y < H; y++)
+                        for (int x = 0; x < W; x++)
+                            if (anomalyMask[y, x])
+                            {
+                                var px = imgData.Pixels[y * W + x];
+                                anomalyLabPixels.Add(RgbToLab(px.R, px.G, px.B));
+                            }
+                    total = anomalyLabPixels.Count;
+                    for (double scale = 1.0; scale < 10.0; scale += 0.05)
+                    {
+                        int inside = 0;
+                        scaledAxes[0] = axes[0] * scale;
+                        scaledAxes[1] = axes[1] * scale;
+                        scaledAxes[2] = axes[2] * scale;
+                        foreach (var lab in anomalyLabPixels)
+                        {
+                            if (IsInsideEllipsoid(lab, center, scaledAxes, rot)) inside++;
+                        }
+                        if (inside > bestInside) { bestInside = inside; bestScale = scale; }
+                        if (inside >= 0.9 * total) break;
+                    }
+                    axes = new double[] { axes[0] * bestScale, axes[1] * bestScale, axes[2] * bestScale };
+                    System.IO.File.AppendAllText(debugPath, $"Ellipsoid center: [{string.Join(",", center)}], axes: [{string.Join(",", axes)}], coverage: {bestInside * 100 / Math.Max(1, total)}%\n");
+                }
+            }
+            else
+            {
+                System.IO.File.AppendAllText(debugPath, $"Ellipsoid is null for this image.\n");
+            }
+            int purpleCount = 0;
+            int debugPixelCount = 0;
+            int anomalyLabDebugCount = 0;
             img.ProcessPixelRows(accessor =>
             {
                 for (int y = 0; y < H; y++)
@@ -181,11 +238,54 @@ namespace AnomalyDetector
                     var row = accessor.GetRowSpan(y);
                     for (int x = 0; x < W; x++)
                     {
-                        if (anomalyMask[y, x]) row[x] = new Rgba32(255, 0, 0, 255);
+                        if (anomalyMask[y, x])
+                        {
+                            anomalyPixelCount++;
+                            var px = imgData.Pixels[y * W + x];
+                            var lab = RgbToLab(px.R, px.G, px.B);
+                            if (anomalyLabDebugCount < 10) {
+                                System.IO.File.AppendAllText(debugPath, $"Overlay pixel ({x},{y}) LAB: [{string.Join(",", lab)}]\n");
+                                anomalyLabDebugCount++;
+                            }
+                            if (center != null && axes != null && rot != null)
+                            {
+                                bool inside = IsInsideEllipsoid(lab, center, axes, rot);
+                                if (debugPixelCount < 10) {
+                                    System.IO.File.AppendAllText(debugPath, $"Pixel ({x},{y}) LAB: [{string.Join(",", lab)}] inside: {inside}\n");
+                                    debugPixelCount++;
+                                }
+                                if (inside)
+                                {
+                                    row[x] = new Rgba32(128, 0, 128, 255); // purple
+                                    purpleCount++;
+                                }
+                                else
+                                    row[x] = new Rgba32(0, 0, 255, 255); // blue
+                            }
+                            else
+                                row[x] = new Rgba32(0, 0, 255, 255); // blue
+                        }
                     }
                 }
             });
+            System.IO.File.AppendAllText(debugPath, $"Anomaly overlay pixel count: {anomalyPixelCount}\n");
+            System.IO.File.AppendAllText(debugPath, $"Purple overlay pixels: {purpleCount}\n");
+            img.Mutate(x => x.Resize(W, H, KnownResamplers.NearestNeighbor));
             return img;
+        }
+
+        // Helper: check if LAB point is inside ellipsoid
+        public static bool IsInsideEllipsoid(double[] pt, double[] center, double[] axes, double[,] rot)
+        {
+            // Transform pt to ellipsoid local coordinates: v_local = R^T * (pt - center)
+            double[] v = new double[3] { pt[0] - center[0], pt[1] - center[1], pt[2] - center[2] };
+            double[] vLocal = new double[3];
+            for (int k = 0; k < 3; k++)
+                vLocal[k] = rot[k,0]*v[0] + rot[k,1]*v[1] + rot[k,2]*v[2]; // R^T * v
+            double val = (vLocal[0] / axes[0]) * (vLocal[0] / axes[0]) +
+                         (vLocal[1] / axes[1]) * (vLocal[1] / axes[1]) +
+                         (vLocal[2] / axes[2]) * (vLocal[2] / axes[2]);
+            return val <= 1.0;
         }
 
         public static Image<Rgba32> MaskToImage(bool[,] mask)
