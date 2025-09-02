@@ -96,7 +96,7 @@ namespace AnomalyDetector
 
             var lblSens = new Label() { Text = "Sensitivity:", AutoSize = true, TextAlign = System.Drawing.ContentAlignment.MiddleLeft };
             mainLayout.Controls.Add(lblSens, 0, 2);
-            numSensitivity = new NumericUpDown() { DecimalPlaces = 2, Increment = 0.05M, Minimum = 0.5M, Maximum = 20M, Value = 2.75M, AutoSize = true };
+            numSensitivity = new NumericUpDown() { DecimalPlaces = 2, Increment = 0.05M, Minimum = 0.5M, Maximum = 20M, Value = 2.20M, AutoSize = true };
             mainLayout.Controls.Add(numSensitivity, 1, 2);
 
             var lblBorder = new Label() { Text = "Border erosion:", AutoSize = true, TextAlign = System.Drawing.ContentAlignment.MiddleLeft };
@@ -106,7 +106,7 @@ namespace AnomalyDetector
 
             var lblTextureWeight = new Label() { Text = "Texture Weight:", AutoSize = true, TextAlign = System.Drawing.ContentAlignment.MiddleLeft };
             mainLayout.Controls.Add(lblTextureWeight, 4, 2);
-            numTextureWeight = new NumericUpDown() { DecimalPlaces = 2, Increment = 0.05M, Minimum = 0M, Maximum = 1M, Value = 0.35M, AutoSize = true };
+            numTextureWeight = new NumericUpDown() { DecimalPlaces = 2, Increment = 0.05M, Minimum = 0M, Maximum = 1M, Value = 0.40M, AutoSize = true };
             mainLayout.Controls.Add(numTextureWeight, 5, 2);
 
             // Add enhanced detection options

@@ -14,8 +14,9 @@ namespace AnomalyDetector
         private GLControl glControl;
         private List<double[]> refLabPoints = new List<double[]>();
         private List<double[]> anomalyLabPoints = new List<double[]>();
-        private float rotX = 30, rotY = -30;
-        private float zoom = 1.0f;
+    private float rotX = 30, rotY = -30;
+    private float zoom = 1.0f;
+    private double panX = 0.0, panY = 0.0; // view pan offsets used for zoom-to-cursor
         private Point lastMouse;
         private bool dragging = false;
 
@@ -142,6 +143,28 @@ namespace AnomalyDetector
                 };
             }
 
+        // Convert screen coordinates (sx,sy) to world coordinates using constructed orthographic projection
+        private OpenTK.Vector3 ScreenToWorld(int sx, int sy, int W, int H, double left, double right, double bottom, double top, double near, double far, double cx, double cy, double cz)
+        {
+            // Build projection and modelview matrices consistent with Paint
+            var proj = Matrix4.CreateOrthographicOffCenter((float)left, (float)right, (float)bottom, (float)top, (float)near, (float)far);
+            // modelview: translate(-cx,-cy,-cz) * rotX * rotY * translate(cx,cy,cz)
+            var mv = Matrix4.CreateTranslation((float)-cx, (float)-cy, (float)-cz)
+                     * Matrix4.CreateRotationX((float)(rotX * Math.PI / 180.0))
+                     * Matrix4.CreateRotationY((float)(rotY * Math.PI / 180.0))
+                     * Matrix4.CreateTranslation((float)cx, (float)cy, (float)cz);
+
+            var inv = (proj * mv).Inverted();
+            // normalized device coords
+            float nx = 2.0f * sx / (float)W - 1.0f;
+            float ny = 1.0f - 2.0f * sy / (float)H;
+            float nz = 0.0f; // middle of the depth range for ortho
+            var ndc = new Vector4(nx, ny, nz, 1.0f);
+            var world4 = inv * ndc;
+            if (Math.Abs(world4.W) > 1e-6f) return new OpenTK.Vector3(world4.X / world4.W, world4.Y / world4.W, world4.Z / world4.W);
+            return new OpenTK.Vector3(world4.X, world4.Y, world4.Z);
+        }
+
             public Lab3DWindow()
             {
                 this.Text = "3D LAB Color Visualization";
@@ -162,10 +185,66 @@ namespace AnomalyDetector
 
     private void GlControl_MouseWheel(object? sender, MouseEventArgs e)
         {
-            if (e.Delta > 0)
-                zoom *= 1.1f;
-            else if (e.Delta < 0)
-                zoom /= 1.1f;
+            // Compute current ortho bounds (same logic as in Paint) before changing zoom
+            int W = glControl.Width, H = glControl.Height;
+            if (W <= 0 || H <= 0) return;
+            // compute data bounds
+            double minX = double.MaxValue, minY = double.MaxValue, minZ = double.MaxValue;
+            double maxX = double.MinValue, maxY = double.MinValue, maxZ = double.MinValue;
+            int pts = 0;
+            foreach (var p in refLabPoints) { minX = Math.Min(minX, p[0]); minY = Math.Min(minY, p[1]); minZ = Math.Min(minZ, p[2]); maxX = Math.Max(maxX, p[0]); maxY = Math.Max(maxY, p[1]); maxZ = Math.Max(maxZ, p[2]); pts++; }
+            foreach (var p in anomalyLabPoints) { minX = Math.Min(minX, p[0]); minY = Math.Min(minY, p[1]); minZ = Math.Min(minZ, p[2]); maxX = Math.Max(maxX, p[0]); maxY = Math.Max(maxY, p[1]); maxZ = Math.Max(maxZ, p[2]); pts++; }
+
+            double cxOld=0, cyOld=0, czOld=0;
+            double leftOld, rightOld, bottomOld, topOld, nearOld, farOld;
+            if (pts == 0)
+            {
+                double span = 100.0 * zoom;
+                leftOld = -span; rightOld = span; bottomOld = -span; topOld = span; nearOld = -span; farOld = span;
+                cxOld = 0; cyOld = 0; czOld = 0;
+            }
+            else
+            {
+                cxOld = (minX + maxX) / 2.0 + panX; cyOld = (minY + maxY) / 2.0 + panY; czOld = (minZ + maxZ) / 2.0;
+                double spanX = (maxX - minX) / 2.0; double spanY = (maxY - minY) / 2.0; double spanZ = (maxZ - minZ) / 2.0;
+                double span = Math.Max(Math.Max(spanX, spanY), spanZ);
+                if (span < 1.0) span = 10.0;
+                double margin = span * 0.25;
+                double final = (span + margin) * zoom;
+                leftOld = cxOld - final; rightOld = cxOld + final; bottomOld = cyOld - final; topOld = cyOld + final; nearOld = czOld - final * 2.0; farOld = czOld + final * 2.0;
+            }
+            // old world coords under cursor (unproject using current MV/P)
+            Vector3 worldOld = ScreenToWorld(e.X, e.Y, W, H, leftOld, rightOld, bottomOld, topOld, nearOld, farOld, cxOld, cyOld, czOld);
+
+            // apply zoom
+            float oldZoom = zoom;
+            if (e.Delta > 0) zoom *= 1.1f; else if (e.Delta < 0) zoom /= 1.1f;
+
+            // recompute new bounds with updated zoom
+            double leftNew, rightNew, bottomNew, topNew, nearNew, farNew;
+            double cxNew=0, cyNew=0, czNew=0;
+            if (pts == 0)
+            {
+                double span = 100.0 * zoom;
+                leftNew = -span; rightNew = span; bottomNew = -span; topNew = span; nearNew = -span; farNew = span;
+                cxNew = 0; cyNew = 0; czNew = 0;
+            }
+            else
+            {
+                cxNew = (minX + maxX) / 2.0 + panX; cyNew = (minY + maxY) / 2.0 + panY; czNew = (minZ + maxZ) / 2.0;
+                double spanX = (maxX - minX) / 2.0; double spanY = (maxY - minY) / 2.0; double spanZ = (maxZ - minZ) / 2.0;
+                double span = Math.Max(Math.Max(spanX, spanY), spanZ);
+                if (span < 1.0) span = 10.0;
+                double margin = span * 0.25;
+                double final = (span + margin) * zoom;
+                leftNew = cxNew - final; rightNew = cxNew + final; bottomNew = cyNew - final; topNew = cyNew + final; nearNew = czNew - final * 2.0; farNew = czNew + final * 2.0;
+            }
+            Vector3 worldNew = ScreenToWorld(e.X, e.Y, W, H, leftNew, rightNew, bottomNew, topNew, nearNew, farNew, cxNew, cyNew, czNew);
+
+            // Adjust pan so the world point under cursor remains fixed
+            panX += worldOld.X - worldNew.X;
+            panY += worldOld.Y - worldNew.Y;
+
             glControl.Invalidate();
 }
     private void GlControl_MouseDown(object? sender, MouseEventArgs e)
@@ -208,7 +287,39 @@ namespace AnomalyDetector
                 anomalyLabPoints = anomalyLab;
                 // Outlier filtering using Mahalanobis distance
                 var filtered = FilterOutliersMahalanobis(anomalyLabPoints);
-                anomalyEllipsoid = ComputeMVEE(filtered);
+                var ellipsoid = ComputeMVEE(filtered);
+                // Dynamically scale axes until at least 90% of anomaly points are inside
+                if (ellipsoid != null)
+                {
+                    double[] originalAxes = ellipsoid.AxesLengths;
+                    double[] scaledAxes = new double[3];
+                    int total = filtered.Count;
+                    int bestInside = 0;
+                    double bestScale = 1.0;
+                    for (double scale = 1.0; scale < 10.0; scale += 0.05)
+                    {
+                        int inside = 0;
+                        scaledAxes[0] = originalAxes[0] * scale;
+                        scaledAxes[1] = originalAxes[1] * scale;
+                        scaledAxes[2] = originalAxes[2] * scale;
+                        foreach (var pt in filtered)
+                        {
+                            // Use IsInside from visualization logic
+                            double[] v = new double[3] { pt[0] - ellipsoid.Center[0], pt[1] - ellipsoid.Center[1], pt[2] - ellipsoid.Center[2] };
+                            double[] vLocal = new double[3];
+                            for (int k = 0; k < 3; k++)
+                                vLocal[k] = ellipsoid.Rotation[k,0]*v[0] + ellipsoid.Rotation[k,1]*v[1] + ellipsoid.Rotation[k,2]*v[2];
+                            double val = (vLocal[0] / scaledAxes[0]) * (vLocal[0] / scaledAxes[0]) +
+                                         (vLocal[1] / scaledAxes[1]) * (vLocal[1] / scaledAxes[1]) +
+                                         (vLocal[2] / scaledAxes[2]) * (vLocal[2] / scaledAxes[2]);
+                            if (val <= 1.0) inside++;
+                        }
+                        if (inside > bestInside) { bestInside = inside; bestScale = scale; }
+                        if (inside >= 0.9 * total) break;
+                    }
+                    ellipsoid.AxesLengths = new double[] { originalAxes[0] * bestScale, originalAxes[1] * bestScale, originalAxes[2] * bestScale };
+                }
+                anomalyEllipsoid = ellipsoid;
             }
             glControl.Invalidate();
         }
@@ -262,12 +373,38 @@ namespace AnomalyDetector
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
             GL.MatrixMode(MatrixMode.Projection);
             GL.LoadIdentity();
-            float left = -10 * zoom, right = 110 * zoom, bottom = -130 * zoom, top = 130 * zoom, near = -130 * zoom, far = 130 * zoom;
+            // Compute bounds from reference + anomaly points so the projection is centered on the data
+            double cx = 0, cy = 0, cz = 0;
+            double minX = double.MaxValue, minY = double.MaxValue, minZ = double.MaxValue;
+            double maxX = double.MinValue, maxY = double.MinValue, maxZ = double.MinValue;
+            int pts = 0;
+            foreach (var p in refLabPoints) { minX = Math.Min(minX, p[0]); minY = Math.Min(minY, p[1]); minZ = Math.Min(minZ, p[2]); maxX = Math.Max(maxX, p[0]); maxY = Math.Max(maxY, p[1]); maxZ = Math.Max(maxZ, p[2]); pts++; }
+            foreach (var p in anomalyLabPoints) { minX = Math.Min(minX, p[0]); minY = Math.Min(minY, p[1]); minZ = Math.Min(minZ, p[2]); maxX = Math.Max(maxX, p[0]); maxY = Math.Max(maxY, p[1]); maxZ = Math.Max(maxZ, p[2]); pts++; }
+            double left, right, bottom, top, near, far;
+            if (pts == 0)
+            {
+                // default symmetric view
+                double span = 100.0 * zoom;
+                left = -span; right = span; bottom = -span; top = span; near = -span; far = span;
+            }
+            else
+            {
+                cx = (minX + maxX) / 2.0; cy = (minY + maxY) / 2.0; cz = (minZ + maxZ) / 2.0;
+                double spanX = (maxX - minX) / 2.0; double spanY = (maxY - minY) / 2.0; double spanZ = (maxZ - minZ) / 2.0;
+                double span = Math.Max(Math.Max(spanX, spanY), spanZ);
+                if (span < 1.0) span = 10.0; // prevent too tight framing
+                double margin = span * 0.25; // add 25% margin
+                double final = (span + margin) * zoom;
+                left = cx - final; right = cx + final; bottom = cy - final; top = cy + final; near = cz - final * 2.0; far = cz + final * 2.0;
+            }
             GL.Ortho(left, right, bottom, top, near, far);
             GL.MatrixMode(MatrixMode.Modelview);
             GL.LoadIdentity();
+            // Translate so rotations occur around the data centroid
+            GL.Translate((float)-cx, (float)-cy, (float)-cz);
             GL.Rotate(rotX, 1, 0, 0);
             GL.Rotate(rotY, 0, 1, 0);
+            GL.Translate((float)cx, (float)cy, (float)cz);
 
             // Draw reference LAB points (green)
             GL.PointSize(4.0f);
@@ -393,8 +530,9 @@ namespace AnomalyDetector
                     }
                     GL.End();
                 }
-            glControl.SwapBuffers();
+                glControl.SwapBuffers();
             }
-            }
-}
+        }
+
     }
+}

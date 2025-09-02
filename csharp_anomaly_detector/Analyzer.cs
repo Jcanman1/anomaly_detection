@@ -99,7 +99,32 @@ namespace AnomalyDetector
             return cur;
         }
 
-        public static bool[,] DetectAnomalies(ReferenceModel refModel, (Image<Rgba32> Image, Rgba32[] Pixels) imgData, double sensitivity, int borderSize)
+        // Compute mean LAB over a square neighborhood radius around (x,y).
+        // Only include pixels that are inside image bounds and marked as valid in the supplied mask.
+        static double[] GetNeighborhoodMeanLab(Rgba32[] pixels, int W, int H, int x, int y, bool[,] validMask, int radius = 1)
+        {
+            double[] sum = new double[3];
+            int count = 0;
+            for (int dy = -radius; dy <= radius; dy++)
+            {
+                int ny = y + dy;
+                if (ny < 0 || ny >= H) continue;
+                for (int dx = -radius; dx <= radius; dx++)
+                {
+                    int nx = x + dx;
+                    if (nx < 0 || nx >= W) continue;
+                    if (!validMask[ny, nx]) continue;
+                    var p = pixels[ny * W + nx];
+                    var lab = RgbToLab(p.R, p.G, p.B);
+                    sum[0] += lab[0]; sum[1] += lab[1]; sum[2] += lab[2];
+                    count++;
+                }
+            }
+            if (count == 0) return RgbToLab(pixels[y * W + x].R, pixels[y * W + x].G, pixels[y * W + x].B);
+            return new double[] { sum[0] / count, sum[1] / count, sum[2] / count };
+        }
+
+    public static bool[,] DetectAnomalies(ReferenceModel refModel, (Image<Rgba32> Image, Rgba32[] Pixels) imgData, double sensitivity, int borderSize, int neighborhoodRadius = 1)
         {
             var img = imgData.Image;
             var pixels = imgData.Pixels;
@@ -116,8 +141,7 @@ namespace AnomalyDetector
             for (int y = 0; y < H; y++) for (int x = 0; x < W; x++)
             {
                 if (!valid_pixels[y, x]) continue;
-                var px = pixels[y * W + x];
-                var lab = RgbToLab(px.R, px.G, px.B);
+                var lab = GetNeighborhoodMeanLab(pixels, W, H, x, y, valid_pixels, neighborhoodRadius);
                 double sum = 0;
                 for (int k = 0; k < 3; k++) sum += Math.Pow((lab[k] - refModel.LabMean[k]) / refModel.LabStd[k], 2);
                 var distance = Math.Sqrt(sum);
@@ -190,9 +214,10 @@ namespace AnomalyDetector
             {
                 dynamic ellipsoid = ellipsoidObj;
                 center = ellipsoid.Center;
-                axes = ellipsoid.AxesLengths;
+                var originalAxes = ellipsoid.AxesLengths; // Store original MVEE axes
+                axes = originalAxes;
                 rot = ellipsoid.Rotation;
-                // Dynamically scale axes until at least 80% of anomaly pixels are inside
+                // Dynamically scale axes until at least 90% of anomaly pixels are inside
                 if (center != null && axes != null && rot != null)
                 {
                     int total = 0, bestInside = 0;
@@ -210,18 +235,19 @@ namespace AnomalyDetector
                     for (double scale = 1.0; scale < 10.0; scale += 0.05)
                     {
                         int inside = 0;
-                        scaledAxes[0] = axes[0] * scale;
-                        scaledAxes[1] = axes[1] * scale;
-                        scaledAxes[2] = axes[2] * scale;
+                        scaledAxes[0] = originalAxes[0] * scale;
+                        scaledAxes[1] = originalAxes[1] * scale;
+                        scaledAxes[2] = originalAxes[2] * scale;
                         foreach (var lab in anomalyLabPixels)
                         {
                             if (IsInsideEllipsoid(lab, center, scaledAxes, rot)) inside++;
                         }
                         if (inside > bestInside) { bestInside = inside; bestScale = scale; }
-                        if (inside >= 0.9 * total) break;
+                        if (inside >= 0.9 * total) break; // 90% coverage
                     }
-                    axes = new double[] { axes[0] * bestScale, axes[1] * bestScale, axes[2] * bestScale };
-                    System.IO.File.AppendAllText(debugPath, $"Ellipsoid center: [{string.Join(",", center)}], axes: [{string.Join(",", axes)}], coverage: {bestInside * 100 / Math.Max(1, total)}%\n");
+                    axes = new double[] { originalAxes[0] * bestScale, originalAxes[1] * bestScale, originalAxes[2] * bestScale };
+                    // Log the scaled axes and coverage after scaling
+                    System.IO.File.AppendAllText(debugPath, $"Ellipsoid center: [{string.Join(",", center)}], axes: [{string.Join(",", axes)}], coverage: {bestInside * 100 / Math.Max(1, total)}% (target: 90%)\n");
                 }
             }
             else
@@ -436,13 +462,14 @@ namespace AnomalyDetector
         /// <summary>
         /// Enhanced anomaly detection using both color and texture features
         /// </summary>
-        public static bool[,] DetectAnomaliesEnhanced(
+    public static bool[,] DetectAnomaliesEnhanced(
             ReferenceModel refModel,
             (Image<Rgba32> Image, Rgba32[] Pixels) imgData,
             double sensitivity,
             int borderSize,
             bool useTextureFeatures = true,
             double textureWeight = 0.3)
+            
         {
             var img = imgData.Image;
             var pixels = imgData.Pixels;
@@ -469,8 +496,7 @@ namespace AnomalyDetector
             {
                 if (!valid_pixels[y, x]) continue;
 
-                var px = pixels[y * W + x];
-                var lab = RgbToLab(px.R, px.G, px.B);
+                var lab = GetNeighborhoodMeanLab(pixels, W, H, x, y, valid_pixels, 1);
 
                 // Color-based anomaly score (Mahalanobis distance)
                 double colorDistance = 0;
@@ -502,7 +528,7 @@ namespace AnomalyDetector
         /// <summary>
         /// Robust anomaly detection using Median Absolute Deviation
         /// </summary>
-        public static bool[,] DetectAnomaliesRobust(
+    public static bool[,] DetectAnomaliesRobust(
             ReferenceModel refModel,
             (Image<Rgba32> Image, Rgba32[] Pixels) imgData,
             double sensitivity,
@@ -525,8 +551,7 @@ namespace AnomalyDetector
             for (int y = 0; y < H; y++) for (int x = 0; x < W; x++)
             {
                 if (!valid_pixels[y, x]) continue;
-                var px = pixels[y * W + x];
-                var lab = RgbToLab(px.R, px.G, px.B);
+                var lab = GetNeighborhoodMeanLab(pixels, W, H, x, y, valid_pixels, 1);
                 double sum = 0;
                 for (int k = 0; k < 3; k++)
                 {

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("AnomalyDetector")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+da6130b298fd8726ecbd175887bfe27439364738")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+54730f85074101ffc0dc453344c6ad8f7b1ae2ce")]
 [assembly: System.Reflection.AssemblyProductAttribute("AnomalyDetector")]
 [assembly: System.Reflection.AssemblyTitleAttribute("AnomalyDetector")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
